@@ -19,8 +19,16 @@ public class webcam2 extends LinearOpMode {
     // Camera tag size in inches (replace with your tag's real size)
     private final double TAG_SIZE_INCHES = 2.0;
 
+    // --- NEW: Camera Resolution (Replace with your webcam's actual resolution) ---
+    private final double CAMERA_WIDTH_PX = 640.0; // Example: Common webcam width
+    // --- NEW: Estimated Focal Length (in pixels) for your camera/resolution combo ---
+    // This value is crucial for converting pixel offset to real-world distance (cm)
+    // A good initial guess for a 640x480 resolution is around 578.0, but may need calibration.
+    private final double FOCAL_LENGTH_PX = 578.0;
+
     @Override
     public void runOpMode() throws InterruptedException {
+        // ... (Initialization remains the same)
 
         // --- Initialize AprilTag processor ---
         aprilTag = new AprilTagProcessor.Builder()
@@ -37,6 +45,9 @@ public class webcam2 extends LinearOpMode {
 
         waitForStart();
 
+        // --- NEW: Calculate the horizontal center of the camera's view in pixels ---
+        final double CAMERA_CENTER_X_PX = CAMERA_WIDTH_PX / 2.0;
+
         while (opModeIsActive()) {
 
             // Get all current detections
@@ -50,10 +61,12 @@ public class webcam2 extends LinearOpMode {
                 // Center pixel
                 telemetry.addData("Center (px)", "(%.1f, %.1f)", det.center.x, det.center.y);
 
-                double distanceInches;
+                // --- NEW: Calculate the horizontal offset in pixels and determine the distance to the tag in inches ---
+                double offsetX_px = det.center.x - CAMERA_CENTER_X_PX;
+                double distanceInches = 0.0;
 
                 if (det.robotPose != null) {
-                    // Accurate pose distance
+                    // Accurate pose distance (in the FTC SDK, position is in inches)
                     double x = det.robotPose.getPosition().x;
                     double y = det.robotPose.getPosition().y;
                     double z = det.robotPose.getPosition().z;
@@ -62,12 +75,28 @@ public class webcam2 extends LinearOpMode {
                 } else {
                     // Rough estimate using pixel width
                     double tagWidthPx = det.corners[1].x - det.corners[0].x;
-                    double focalLength = 578; // typical for Logitech C920
-                    distanceInches = (TAG_SIZE_INCHES * focalLength) / tagWidthPx;
-                    double total = distanceInches * 2.54;
-                    telemetry.addData("Estimated Distance", "%.2f cm", total);
+                    distanceInches = (TAG_SIZE_INCHES * FOCAL_LENGTH_PX) / tagWidthPx;
+                    telemetry.addData("Estimated Distance", "%.2f in", distanceInches);
                 }
 
+                // --- NEW: Convert the pixel offset (offsetX_px) to a real-world lateral distance (cm) ---
+                // Formula: Offset_cm = (Offset_px * Tag_Size_cm) / Tag_Width_px
+                // A better approach using focal length (if available):
+                // Offset_cm = (Offset_px * Distance_to_Tag_in_cm) / Focal_Length_px
+
+                double distanceCm = distanceInches * 2.54; // Convert distance to cm
+
+                // Calculate the real-world lateral offset in cm
+                double lateralOffsetCm = (offsetX_px * distanceCm) / FOCAL_LENGTH_PX;
+
+                // Determine if it's Left or Right and format the output
+                String direction = lateralOffsetCm < 0 ? "LEFT" : "RIGHT";
+                // Use Math.abs() for the magnitude of the offset
+                double offsetMagnitude = Math.abs(lateralOffsetCm);
+
+                // --- NEW: Telemetry Output ---
+                telemetry.addData("Lateral Offset (cm)", "%.2f %s", offsetMagnitude, direction);
+                telemetry.addData("Distance (cm)", "%.2f", distanceCm);
             }
 
             telemetry.update();
